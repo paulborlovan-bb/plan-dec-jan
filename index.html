@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>Protected document</title>
+<style>
+  :root{color-scheme:light}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:#fff;color:#000;font:17px/1.5 system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif}
+  #lock{min-height:100dvh;display:grid;place-items:center;padding:24px 16px}
+  form{width:min(100%,380px);display:grid;gap:14px}
+  h1{margin:0;font-size:26px;font-weight:600;letter-spacing:.02em;line-height:1.15;text-transform:uppercase}
+  p{margin:0;color:#444442}
+  input,button,a.btn{font:inherit;padding:13px 16px;border-radius:0;border:1px solid #000;background:#fff;color:#000;width:100%}
+  input:focus-visible,button:focus-visible,a.btn:focus-visible{outline:2px solid #000;outline-offset:2px}
+  button{background:#000;color:#fff;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.6;cursor:progress}
+  #m{min-height:1.5em;font-size:15px}
+  #m.bad{color:#b3261e}
+  #doc{display:none;height:100dvh;flex-direction:column}
+  #bar{display:flex;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid #CACACA}
+  #bar span{flex:1;font-size:14px;color:#444442;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #bar a.btn{width:auto;padding:8px 14px;font-size:14px;text-decoration:none;white-space:nowrap}
+  #bar a.btn.dark{background:#000;color:#fff}
+  iframe{flex:1;width:100%;border:0;background:#888}
+</style>
+</head>
+<body>
+<div id="lock">
+  <form id="f" autocomplete="off">
+    <h1>Protected document</h1>
+    <p>Enter the password you were given to open it.</p>
+    <input id="p" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Password" required>
+    <button id="b">Open</button>
+    <p id="m" role="status"></p>
+  </form>
+</div>
+<div id="doc">
+  <div id="bar"><span id="t"></span><a class="btn" id="o" target="_blank" rel="noopener">Open full screen</a><a class="btn dark" id="d">Download PDF</a></div>
+  <iframe id="v" title="Document"></iframe>
+</div>
+<script>
+const SALT = '9mhn0aidWX+1ODeoKSniWw==', ITER = 600000;
+const bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const $ = (id) => document.getElementById(id);
+const get = (f) => fetch(f).then((r) => { if (!r.ok) throw new Error('load'); return r.arrayBuffer(); });
+const sealed = Promise.all([get('doc.bin'), get('name.bin')]);
+sealed.catch(() => {});
+async function unlock(raw) {                            // only the right key gets through
+  const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
+  const open = (ab) => { const b = new Uint8Array(ab); return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.slice(0, 12) }, key, b.slice(12)); };
+  const [doc, name] = await sealed;
+  return { pdf: await open(doc), name: new TextDecoder().decode(await open(name)) };
+}
+function show({ pdf, name }) {
+  const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+  document.title = name.replace(/\.pdf$/, '').replace(/_/g, ' ');
+  $('t').textContent = document.title;
+  $('d').href = url; $('d').download = name; $('o').href = url;
+  $('v').src = url + '#view=FitH';
+  $('lock').style.display = 'none'; $('doc').style.display = 'flex';
+}
+$('f').addEventListener('submit', async (e) => {
+  e.preventDefault(); $('b').disabled = true; $('m').className = ''; $('m').textContent = 'Opening…';
+  try {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode($('p').value.trim()), 'PBKDF2', false, ['deriveBits']);
+    const raw = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: bytes(SALT), iterations: ITER, hash: 'SHA-256' }, base, 256));
+    const doc = await unlock(raw);
+    try { sessionStorage.setItem('ds_k', btoa(String.fromCharCode(...raw))); } catch (_) {}
+    show(doc);
+  } catch (err) {
+    $('b').disabled = false; $('m').className = 'bad';
+    $('m').textContent = err && err.message === 'load' ? 'The document could not be loaded. Check your connection and try again.' : 'That password did not open the document.';
+    $('p').select();
+  }
+});
+// same tab, already opened once: no need to ask again
+try { const k = sessionStorage.getItem('ds_k'); if (k) unlock(bytes(k)).then(show).catch(() => sessionStorage.removeItem('ds_k')); } catch (_) {}
+$('p').focus();
+</script>
+</body>
+</html>
