@@ -29,7 +29,7 @@
   <p id="m" role="status"></p>
 </form>
 <script>
-const SALT = 'jzfkjvS+lldXFd3xo98+eA==', ITER = 600000;
+const SALT = 'K42NXrAuHUemzvDjnMvVJw==', ITER = 600000;
 const bytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 const f = document.getElementById('f'), p = document.getElementById('p'), b = document.getElementById('b'), m = document.getElementById('m');
 const sealed = fetch('page.bin').then((r) => { if (!r.ok) throw new Error('load'); return r.arrayBuffer(); });
